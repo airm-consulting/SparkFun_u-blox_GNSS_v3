@@ -410,6 +410,16 @@ void DevUBLOXGNSS::end(void)
     packetUBXTIMTM2 = nullptr;
   }
 
+  if (packetUBXTIMSVIN != nullptr)
+  {
+    if (packetUBXTIMSVIN->callbackData != nullptr)
+    {
+      delete packetUBXTIMSVIN->callbackData;
+    }
+    delete packetUBXTIMSVIN;
+    packetUBXTIMSVIN = nullptr;
+  }
+
   if (packetUBXTIMTP != nullptr)
   {
     if (packetUBXTIMTP->callbackData != nullptr)
@@ -1460,6 +1470,12 @@ bool DevUBLOXGNSS::autoLookup(uint8_t Class, uint8_t ID, uint16_t *maxSize)
       if (maxSize != nullptr)
         *maxSize = UBX_TIM_TP_LEN;
       return (packetUBXTIMTP != nullptr);
+    }
+    else if (ID == UBX_TIM_SVIN)
+    {
+      if (maxSize != nullptr)
+        *maxSize = UBX_TIM_SVIN_LEN;
+      return (packetUBXTIMSVIN != nullptr);  
     }
     break;
   case UBX_CLASS_MON:
@@ -4307,6 +4323,36 @@ void DevUBLOXGNSS::processUBXpacket(ubxPacket *msg)
         }
       }
     }
+    else if (msg->id == UBX_TIM_SVIN && msg->len == UBX_TIM_SVIN_LEN)
+    {
+      if (packetUBXTIMSVIN != nullptr)
+      {
+        packetUBXTIMSVIN->data.dur = extractLong(msg, 0);
+        packetUBXTIMSVIN->data.meanX = extractSignedLong(msg, 4);
+        packetUBXTIMSVIN->data.meanY = extractSignedLong(msg, 8);
+        packetUBXTIMSVIN->data.meanZ = extractSignedLong(msg, 12);
+        packetUBXTIMSVIN->data.meanV = extractLong(msg, 16);
+        packetUBXTIMSVIN->data.obs = extractLong(msg, 20);
+        packetUBXTIMSVIN->data.valid = extractSignedChar(msg, 24);
+        packetUBXTIMSVIN->data.active = extractSignedChar(msg, 25);
+        // Mark all datums as fresh (not read before)
+        packetUBXTIMSVIN->moduleQueried.moduleQueried.all = 0xFFFFFFFF;
+
+        // Check if we need to copy the data for the callback
+        if ((packetUBXTIMSVIN->callbackData != nullptr)                                  // If RAM has been allocated for the copy of the data
+            && (packetUBXTIMSVIN->automaticFlags.flags.bits.callbackCopyValid == false)) // AND the data is stale
+        {
+          memcpy(&packetUBXTIMSVIN->callbackData->dur, &packetUBXTIMSVIN->data.dur, sizeof(UBX_TIM_SVIN_data_t));
+          packetUBXTIMSVIN->automaticFlags.flags.bits.callbackCopyValid = true;
+        }
+
+        // Check if we need to copy the data into the file buffer
+        if (packetUBXTIMSVIN->automaticFlags.flags.bits.addToFileBuffer)
+        {
+          addedToFileBuffer = storePacket(msg);
+        }                
+      }
+    }
     break;
   case UBX_CLASS_MON:
     if (msg->id == UBX_MON_HW && msg->len == UBX_MON_HW_LEN)
@@ -5833,6 +5879,18 @@ void DevUBLOXGNSS::checkCallbacks(void)
         }
         packetUBXTIMTM2->automaticFlags.flags.bits.callbackCopyValid = false; // Mark the data as stale
       }
+
+  if (packetUBXTIMSVIN != nullptr)                                               // If RAM has been allocated for message storage
+    if (packetUBXTIMSVIN->callbackData != nullptr)                               // If RAM has been allocated for the copy of the data
+      if (packetUBXTIMSVIN->automaticFlags.flags.bits.callbackCopyValid == true) // If the copy of the data is valid
+      {
+        if (packetUBXTIMSVIN->callbackPointerPtr != nullptr) // If the pointer to the callback has been defined
+        {
+          packetUBXTIMSVIN->callbackPointerPtr(packetUBXTIMSVIN->callbackData); // Call the callback
+        }
+        packetUBXTIMSVIN->automaticFlags.flags.bits.callbackCopyValid = false; // Mark the data as stale
+      }
+
 
   if (packetUBXTIMTP != nullptr)                                               // If RAM has been allocated for message storage
     if (packetUBXTIMTP->callbackData != nullptr)                               // If RAM has been allocated for the copy of the data
@@ -13525,6 +13583,175 @@ void DevUBLOXGNSS::logRXMMEASX(bool enabled)
 }
 #endif
 
+// ***** TIM SVIN automatic support
+
+bool DevUBLOXGNSS::getTIMSurveyStatus(uint16_t maxWait)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the TM2 data
+  if (packetUBXTIMSVIN == nullptr) // Bail if the RAM allocation failed
+    return (false);
+
+  if (packetUBXTIMSVIN->automaticFlags.flags.bits.automatic && packetUBXTIMSVIN->automaticFlags.flags.bits.implicitUpdate)
+  {
+    // The GPS is automatically reporting, we just check whether we got unread data
+    checkUbloxInternal(&packetCfg, 0, 0); // Call checkUbloxInternal to parse any incoming data. Don't overwrite the requested Class and ID
+    return packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all;
+  }
+  else if (packetUBXTIMSVIN->automaticFlags.flags.bits.automatic && !packetUBXTIMSVIN->automaticFlags.flags.bits.implicitUpdate)
+  {
+    // Someone else has to call checkUblox for us...
+    return (false);
+  }
+  else
+  {
+    // The GPS is not automatically reporting navigation position so we have to poll explicitly
+    packetCfg.cls = UBX_CLASS_TIM;
+    packetCfg.id = UBX_TIM_SVIN;
+    packetCfg.len = 0;
+    packetCfg.startingSpot = 0;
+
+    // The data is parsed as part of processing the response
+    sfe_ublox_status_e retVal = sendCommand(&packetCfg, maxWait);
+
+    if (retVal == SFE_UBLOX_STATUS_DATA_RECEIVED)
+      return (true);
+
+    if (retVal == SFE_UBLOX_STATUS_DATA_OVERWRITTEN)
+    {
+      return (true);
+    }
+
+    return (false);
+  }
+}
+
+// Enable or disable automatic navigation message generation by the GNSS. This changes the way getTIMTM2
+// works.
+bool DevUBLOXGNSS::setAutoTIMSVIN(bool enable, uint8_t layer, uint16_t maxWait)
+{
+  return setAutoTIMSVINrate(enable ? 1 : 0, true, layer, maxWait);
+}
+
+// Enable or disable automatic navigation message generation by the GNSS. This changes the way getTIMTM2
+// works.
+bool DevUBLOXGNSS::setAutoTIMSVIN(bool enable, bool implicitUpdate, uint8_t layer, uint16_t maxWait)
+{
+  return setAutoTIMSVINrate(enable ? 1 : 0, implicitUpdate, layer, maxWait);
+}
+
+// Enable or disable automatic navigation message generation by the GNSS. This changes the way getTIMTM2
+// works.
+bool DevUBLOXGNSS::setAutoTIMSVINrate(uint8_t rate, bool implicitUpdate, uint8_t layer, uint16_t maxWait)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the data
+  if (packetUBXTIMSVIN == nullptr) // Only attempt this if RAM allocation was successful
+    return false;
+
+  if (rate > 127)
+    rate = 127;
+
+  uint32_t key = UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_I2C;
+  if (_commType == COMM_TYPE_SPI)
+    key = UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_SPI;
+  else if (_commType == COMM_TYPE_SERIAL)
+  {
+    if (!_UART2)
+      key = UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_UART1;
+    else
+      key = UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_UART2;
+  }
+
+  bool ok = setVal8(key, rate, layer, maxWait);
+  if (ok)
+  {
+    packetUBXTIMSVIN->automaticFlags.flags.bits.automatic = (rate > 0);
+    packetUBXTIMSVIN->automaticFlags.flags.bits.implicitUpdate = implicitUpdate;
+  }
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all = false;
+  return ok;
+}
+
+// Enable automatic navigation message generation by the GNSS.
+bool DevUBLOXGNSS::setAutoTIMSVINcallbackPtr(void (*callbackPointerPtr)(UBX_TIM_SVIN_data_t *), uint8_t layer, uint16_t maxWait)
+{
+  // Enable auto messages. Set implicitUpdate to false as we expect the user to call checkUblox manually.
+  bool result = setAutoTIMSVIN(true, false, layer, maxWait);
+  if (!result)
+    return (result); // Bail if setAuto failed
+
+  if (packetUBXTIMSVIN->callbackData == nullptr) // Check if RAM has been allocated for the callback copy
+  {
+    packetUBXTIMSVIN->callbackData = new UBX_TIM_SVIN_data_t; // Allocate RAM for the main struct
+  }
+
+  if (packetUBXTIMSVIN->callbackData == nullptr)
+  {
+#ifndef SFE_UBLOX_REDUCED_PROG_MEM
+    if ((_printDebug == true) || (_printLimitedDebug == true)) // This is important. Print this if doing limited debugging
+      _debugSerial.println(F("setAutoTIMSVINcallbackPtr: RAM alloc failed!"));
+#endif
+    return (false);
+  }
+
+  packetUBXTIMSVIN->callbackPointerPtr = callbackPointerPtr;
+  return (true);
+}
+
+// In case no config access to the GNSS is possible and VELNED is send cyclically already
+// set config to suitable parameters
+bool DevUBLOXGNSS::assumeAutoTIMSVIN(bool enabled, bool implicitUpdate)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the data
+  if (packetUBXTIMTM2 == nullptr) // Only attempt this if RAM allocation was successful
+    return false;
+
+  bool changes = packetUBXTIMSVIN->automaticFlags.flags.bits.automatic != enabled || packetUBXTIMSVIN->automaticFlags.flags.bits.implicitUpdate != implicitUpdate;
+  if (changes)
+  {
+    packetUBXTIMSVIN->automaticFlags.flags.bits.automatic = enabled;
+    packetUBXTIMSVIN->automaticFlags.flags.bits.implicitUpdate = implicitUpdate;
+  }
+  return changes;
+}
+
+// PRIVATE: Allocate RAM for packetUBXTIMTM2 and initialize it
+bool DevUBLOXGNSS::initPacketUBXTIMSVIN()
+{
+  packetUBXTIMSVIN = new UBX_TIM_SVIN_t; // Allocate RAM for the main struct
+  if (packetUBXTIMSVIN == nullptr)
+  {
+#ifndef SFE_UBLOX_REDUCED_PROG_MEM
+    if ((_printDebug == true) || (_printLimitedDebug == true)) // This is important. Print this if doing limited debugging
+      _debugSerial.println(F("initPacketUBXTIMSVIN: RAM alloc failed!"));
+#endif
+    return (false);
+  }
+  packetUBXTIMSVIN->automaticFlags.flags.all = 0;
+  packetUBXTIMSVIN->callbackPointerPtr = nullptr;
+  packetUBXTIMSVIN->callbackData = nullptr;
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.all = 0;
+  return (true);
+}
+
+// Mark all the data as read/stale
+void DevUBLOXGNSS::flushTIMSVIN()
+{
+  if (packetUBXTIMSVIN == nullptr)
+    return;                                             // Bail if RAM has not been allocated (otherwise we could be writing anywhere!)
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.all = 0; // Mark all datums as stale (read before)
+}
+
+// Log this data in file buffer
+void DevUBLOXGNSS::logTIMSVIN(bool enabled)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    return; // Bail if RAM has not been allocated (otherwise we could be writing anywhere!)
+  packetUBXTIMSVIN->automaticFlags.flags.bits.addToFileBuffer = (uint8_t)enabled;
+}
+
 // ***** TIM TM2 automatic support
 
 bool DevUBLOXGNSS::getTIMTM2(uint16_t maxWait)
@@ -17451,6 +17678,82 @@ int32_t DevUBLOXGNSS::getMotionHeading(uint16_t maxWait)
   packetUBXNAVPVAT->moduleQueried.moduleQueried2.bits.motHeading = false; // Since we are about to give this to user, mark this data as stale
   packetUBXNAVPVAT->moduleQueried.moduleQueried1.bits.all = false;
   return (packetUBXNAVPVAT->data.motHeading);
+}
+
+// ***** TIME SVIN Helper Functions
+
+bool DevUBLOXGNSS::getTIMSurveyInActive(uint16_t maxWait)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the SVIN data
+  if (packetUBXTIMSVIN == nullptr) // Bail if the RAM allocation failed
+    return false;
+
+  if (packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.active == false)
+    getTIMSurveyStatus(maxWait);
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.active = false; // Since we are about to give this to user, mark this data as stale
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all = false;
+  return ((bool)packetUBXTIMSVIN->data.active);
+}
+
+bool DevUBLOXGNSS::getTIMSurveyInValid(uint16_t maxWait)
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the SVIN data
+  if (packetUBXTIMSVIN == nullptr) // Bail if the RAM allocation failed
+    return false;
+
+  if (packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.valid == false)
+    getTIMSurveyStatus(maxWait);
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.valid = false; // Since we are about to give this to user, mark this data as stale
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all = false;
+  return ((bool)packetUBXTIMSVIN->data.valid);
+}
+
+uint32_t DevUBLOXGNSS::getTIMSurveyInObservationTimeFull(uint16_t maxWait) // Return the full uint32_t
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the SVIN data
+  if (packetUBXTIMSVIN == nullptr) // Bail if the RAM allocation failed
+    return 0;
+
+  if (packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.dur == false)
+    getTIMSurveyStatus(maxWait);
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.dur = false; // Since we are about to give this to user, mark this data as stale
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all = false;
+
+  return (packetUBXTIMSVIN->data.dur);
+}
+
+uint16_t DevUBLOXGNSS::getTIMSurveyInObservationTime(uint16_t maxWait) // Truncated to 65535 seconds
+{
+  // dur (Passed survey-in observation time) is U4 (uint32_t) seconds. Here we truncate to 16 bits
+  uint32_t tmpObsTime = getTIMSurveyInObservationTimeFull(maxWait);
+  if (tmpObsTime <= 0xFFFF)
+  {
+    return ((uint16_t)tmpObsTime);
+  }
+  else
+  {
+    return (0xFFFF);
+  }
+}
+
+float DevUBLOXGNSS::getTIMSurveyInMeanVariance(uint16_t maxWait) // Returned as m^2
+{
+  if (packetUBXTIMSVIN == nullptr)
+    initPacketUBXTIMSVIN();        // Check that RAM has been allocated for the SVIN data
+  if (packetUBXTIMSVIN == nullptr) // Bail if the RAM allocation failed
+    return 0;
+
+  if (packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.meanV == false)
+    getTIMSurveyStatus(maxWait);
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.meanV = false; // Since we are about to give this to user, mark this data as stale
+  packetUBXTIMSVIN->moduleQueried.moduleQueried.bits.all = false;
+
+  // meanVariance is U4 (uint32_t) in 1mm. We convert this to float.
+  uint32_t tempFloat = packetUBXTIMSVIN->data.meanV;
+  return (((float)tempFloat) / 1000000.0); // Convert mm^2 to m^2
 }
 
 // ***** SVIN Helper Functions

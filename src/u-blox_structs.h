@@ -1893,6 +1893,52 @@ typedef struct
 
 // TIM-specific structs
 
+//UBX-TIM-SVIN (0x0D 0x04): Time survey-in data
+const uint16_t UBX_TIM_SVIN_LEN = 28;
+
+typedef struct
+{
+  uint32_t dur;   // Passed survey-in observation time: s
+  int32_t meanX;  // Current survey-in mean position ECEF X coordinate: cm
+  int32_t meanY;  // Current survey-in mean position ECEF Y coordinate: cm
+  int32_t meanZ;  // Current survey-in mean position ECEF Z coordinate: cm
+  uint32_t meanV; // Current survey-in mean Current survey-in mean position 3D variance: mm^2
+  uint32_t obs;     // Number of position observations used during survey-in
+  int8_t valid;     // Survey-in position validity flag, 1 = valid, otherwise 0
+  int8_t active;    // Survey-in in progress flag, 1 = in-progress, otherwise 0
+  uint8_t reserved0[2];
+} UBX_TIM_SVIN_data_t;
+
+typedef struct
+{
+  union
+  {
+    uint32_t all;
+    struct
+    {
+      uint32_t all : 1;
+
+      uint32_t dur : 1;
+      uint32_t meanX : 1;
+      uint32_t meanY : 1;
+      uint32_t meanZ : 1;
+      uint32_t meanV : 1;
+      uint32_t obs : 1;
+      uint32_t valid : 1;
+      uint32_t active : 1;
+    } bits;
+  } moduleQueried;
+} UBX_TIM_SVIN_moduleQueried_t;
+
+typedef struct
+{
+  ubxAutomaticFlags automaticFlags;
+  UBX_TIM_SVIN_data_t data;
+  UBX_TIM_SVIN_moduleQueried_t moduleQueried;
+  void (*callbackPointerPtr)(UBX_TIM_SVIN_data_t *);
+  UBX_TIM_SVIN_data_t *callbackData;
+} UBX_TIM_SVIN_t;
+
 // UBX-TIM-TM2 (0x0D 0x03): Time mark data
 const uint16_t UBX_TIM_TM2_LEN = 28;
 

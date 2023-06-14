@@ -956,6 +956,14 @@ public:
 #endif
 
   // Timing messages (TIM)
+  bool getTIMSurveyStatus(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                                                                                                     // TIM SVIN
+  bool setAutoTIMSVIN(bool enabled, uint8_t layer = VAL_LAYER_RAM_BBR, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                                                // Enable/disable automatic TIM SVIN reports at the navigation frequency
+  bool setAutoTIMSVIN(bool enabled, bool implicitUpdate, uint8_t layer = VAL_LAYER_RAM_BBR, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                           // Enable/disable automatic TIM SVIN reports at the navigation frequency, with implicitUpdate == false accessing stale data will not issue parsing of data in the rxbuffer of your interface, instead you have to call checkUblox when you want to perform an update
+  bool setAutoTIMSVINrate(uint8_t rate, bool implicitUpdate = true, uint8_t layer = VAL_LAYER_RAM_BBR, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                // Set the rate for automatic TIM SVIN reports
+  bool setAutoTIMSVINcallbackPtr(void (*callbackPointerPtr)(UBX_TIM_TM2_data_t *), uint8_t layer = VAL_LAYER_RAM_BBR, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait); // Enable automatic SVIN reports at the navigation frequency. Data is accessed from the callback.
+  bool assumeAutoTIMSVIN(bool enabled, bool implicitUpdate = true);                                                                                                 // In case no config access to the GPS is possible and TIM SVIN is send cyclically already
+  void flushTIMSVIN();                                                                                                                                              // Mark all the data as read/stale
+  void logTIMSVIN(bool enabled = true);                                                                                                                             // Log data to file buffer
 
   bool getTIMTM2(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                                                                                                     // TIM TM2
   bool setAutoTIMTM2(bool enabled, uint8_t layer = VAL_LAYER_RAM_BBR, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);                                                // Enable/disable automatic TIM TM2 reports at the navigation frequency
@@ -1183,6 +1191,14 @@ public:
   uint32_t getSurveyInObservationTimeFull(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait); // Return the full uint32_t
   float getSurveyInMeanAccuracy(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);           // Returned as m
 
+    // Helper functions for TIMSVIN
+
+  bool getTIMSurveyInActive(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);
+  bool getTIMSurveyInValid(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);
+  uint16_t getTIMSurveyInObservationTime(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);     // Truncated to 65535 seconds
+  uint32_t getTIMSurveyInObservationTimeFull(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait); // Return the full uint32_t
+  float getTIMSurveyInMeanVariance(uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);           // Returned as m^2
+
   // Helper functions for TIMELS
 
   uint8_t getLeapIndicator(int32_t &timeToLsEvent, uint16_t maxWait = kUBLOXGNSSDefaultMaxWait);
@@ -1342,6 +1358,7 @@ public:
   UBX_RXM_MEASX_t *packetUBXRXMMEASX = nullptr;                  // Pointer to struct. RAM will be allocated for this if/when necessary
 #endif
 
+  UBX_TIM_SVIN_t *packetUBXTIMSVIN = nullptr; // Pointer to struct. RAM will be allocated for this if/when necessary
   UBX_TIM_TM2_t *packetUBXTIMTM2 = nullptr; // Pointer to struct. RAM will be allocated for this if/when necessary
   UBX_TIM_TP_t *packetUBXTIMTP = nullptr;   // Pointer to struct. RAM will be allocated for this if/when necessary
 
@@ -1455,6 +1472,7 @@ protected:
   bool initPacketUBXRXMSFRBX();         // Allocate RAM for packetUBXRXMSFRBX and initialize it
   bool initPacketUBXRXMRAWX();          // Allocate RAM for packetUBXRXMRAWX and initialize it
   bool initPacketUBXRXMMEASX();         // Allocate RAM for packetUBXRXMMEASX and initialize it
+  bool initPacketUBXTIMSVIN();          // Allocate RAM for packetUBXTIMSVIN and initialize it
   bool initPacketUBXTIMTM2();           // Allocate RAM for packetUBXTIMTM2 and initialize it
   bool initPacketUBXTIMTP();            // Allocate RAM for packetUBXTIMTP and initialize it
   bool initPacketUBXMONHW();            // Allocate RAM for packetUBXMONHW and initialize it

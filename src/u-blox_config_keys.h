@@ -631,6 +631,11 @@ const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_VRFY_SPI = UBX_CFG_U1 | 0x20910096;     
 const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_VRFY_UART1 = UBX_CFG_U1 | 0x20910093;       // Output rate of the UBX-TIM-VRFY message on port UART1
 const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_VRFY_UART2 = UBX_CFG_U1 | 0x20910094;       // Output rate of the UBX-TIM-VRFY message on port UART2
 const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_VRFY_USB = UBX_CFG_U1 | 0x20910095;         // Output rate of the UBX-TIM-VRFY message on port USB
+const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_I2C = UBX_CFG_U1 | 0x20910097;         // Output rate of the UBX-TIM-SVIN message on port I2C
+const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_SPI = UBX_CFG_U1 | 0x2091009b;         // Output rate of the UBX-TIM-SVIN message on port SPI
+const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_UART1 = UBX_CFG_U1 | 0x20910098;       // Output rate of the UBX-TIM-SVIN message on port UART1
+const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_UART2 = UBX_CFG_U1 | 0x20910099;       // Output rate of the UBX-TIM-SVIN message on port UART2
+const uint32_t UBLOX_CFG_MSGOUT_UBX_TIM_SVIN_USB = UBX_CFG_U1 | 0x2091009a;         // Output rate of the UBX-TIM-SVIN message on port USB
 
 // Additional CFG_MSGOUT keys for the ZED-F9R HPS121
 //-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-
